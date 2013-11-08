@@ -33,28 +33,37 @@ class Mode(object):
     SIMPLE = "simple"  # Simple start/end timing for the request as a whole
     CPU_INSTRUMENTED = "instrumented"  # Profile all function calls
     CPU_SAMPLING = "sampling"  # Sample call stacks
+    CPU_LINEBYLINE = "linebyline" # Line-by-line profiling on a subset of functions
     RPC_ONLY = "rpc"  # Profile all RPC calls
     RPC_AND_CPU_INSTRUMENTED = "rpc_instrumented" # RPCs and all fxn calls
     RPC_AND_CPU_SAMPLING = "rpc_sampling" # RPCs and sample call stacks
+    RPC_AND_CPU_LINEBYLINE = "rpc_linebyline" # RPCs and line-by-line profiling
 
     @staticmethod
     def is_rpc_enabled(mode):
         return mode in [
                 Mode.RPC_ONLY,
                 Mode.RPC_AND_CPU_INSTRUMENTED,
-                Mode.RPC_AND_CPU_SAMPLING];
+                Mode.RPC_AND_CPU_SAMPLING,
+                Mode.RPC_AND_CPU_LINEBYLINE]
 
     @staticmethod
     def is_sampling_enabled(mode):
         return mode in [
                 Mode.CPU_SAMPLING,
-                Mode.RPC_AND_CPU_SAMPLING];
+                Mode.RPC_AND_CPU_SAMPLING]
 
     @staticmethod
     def is_instrumented_enabled(mode):
         return mode in [
                 Mode.CPU_INSTRUMENTED,
-                Mode.RPC_AND_CPU_INSTRUMENTED];
+                Mode.RPC_AND_CPU_INSTRUMENTED]
+
+    @staticmethod
+    def is_linebyline_enabled(mode):
+        return mode in [
+                Mode.CPU_LINEBYLINE,
+                Mode.RPC_AND_CPU_LINEBYLINE]
 
 
 _config = lib_config.register("gae_mini_profiler", {
@@ -93,9 +102,11 @@ def get_mode(environ, cookies):
             Mode.SIMPLE,
             Mode.CPU_INSTRUMENTED,
             Mode.CPU_SAMPLING,
+            Mode.CPU_LINEBYLINE,
             Mode.RPC_ONLY,
             Mode.RPC_AND_CPU_INSTRUMENTED,
-            Mode.RPC_AND_CPU_SAMPLING]):
+            Mode.RPC_AND_CPU_SAMPLING,
+            Mode.RPC_AND_CPU_LINEBYLINE]):
         return mode
 
     if _DEVELOPMENT_SERVER:

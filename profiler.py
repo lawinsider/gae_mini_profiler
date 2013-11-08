@@ -53,8 +53,6 @@ class CurrentRequestId(object):
         CurrentRequestId._local.request_id = request_id
 
 
-
-
 class SharedStatsHandler(RequestHandler):
 
     def get(self):
@@ -250,6 +248,7 @@ class RequestProfiler(object):
         self.mode = mode
         self.instrumented_prof = None
         self.sampling_prof = None
+        self.linebyline_prof = None
         self.appstats_prof = None
         self.temporary_redirect = False
         self.logs = None
@@ -271,6 +270,8 @@ class RequestProfiler(object):
             results.update(self.instrumented_prof.results())
         elif self.sampling_prof:
             results.update(self.sampling_prof.results())
+        elif self.linebyline_prof:
+            results.update(self.linebyline_prof.results())
 
         return results
 
@@ -329,7 +330,7 @@ class RequestProfiler(object):
                 # Note that we don't import appstats_profiler at the top of
                 # this file so we don't bring in a lot of imports for users who
                 # don't have the profiler enabled.
-                from gae_mini_profiler import appstats_profiler
+                from . import appstats_profiler
                 self.appstats_prof = appstats_profiler.Profile()
                 app = self.appstats_prof.wrap(app)
 
@@ -346,7 +347,7 @@ class RequestProfiler(object):
                 # Note that we don't import sampling_profiler at the top of
                 # this file so we don't bring in a lot of imports for users who
                 # don't have the profiler enabled.
-                from gae_mini_profiler import sampling_profiler
+                from . import sampling_profiler
                 self.sampling_prof = sampling_profiler.Profile()
                 result_fxn_wrapper = self.sampling_prof.run
 
@@ -355,9 +356,14 @@ class RequestProfiler(object):
                 # Note that we don't import instrumented_profiler at the top of
                 # this file so we don't bring in a lot of imports for users who
                 # don't have the profiler enabled.
-                from gae_mini_profiler import instrumented_profiler
+                from . import instrumented_profiler
                 self.instrumented_prof = instrumented_profiler.Profile()
                 result_fxn_wrapper = self.instrumented_prof.run
+
+            elif config.Mode.is_linebyline_enabled(self.mode):
+                from . import linebyline_profiler
+                self.linebyline_prof = linebyline_profiler.Profile()
+                result_fxn_wrapper = self.linebyline_prof.run
 
             # Get wsgi result
             result = result_fxn_wrapper(lambda: app(environ, start_response))

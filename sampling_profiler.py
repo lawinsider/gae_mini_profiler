@@ -26,7 +26,7 @@ import time
 import threading
 import traceback
 
-from gae_mini_profiler import util
+from . import util
 
 class InspectingThread(threading.Thread):
     """Thread that periodically triggers profiler inspections."""
