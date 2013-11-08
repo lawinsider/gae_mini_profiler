@@ -3,7 +3,7 @@ import re
 import sys
 
 
-_STRING = re.compile(r"^\s*(['\"])")
+_STRING = re.compile(r"^\s*u?(['\"])")
 _FLOATING_NUMBER = re.compile(r"^\s*(\d+\.\d+)\s*")
 _NUMBER = re.compile(r"^\s*(\d+L?)\s*")
 _BOOLEAN = re.compile(r"^\s*(True|False)\s*")
