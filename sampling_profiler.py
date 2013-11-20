@@ -109,11 +109,8 @@ class Profile(object):
         # Look at stacks of all existing threads...
         # See http://bzimmer.ziclix.com/2008/12/17/python-thread-dumps/
         for thread_id, stack in sys._current_frames().items():
-
             # ...but only sample from the main request thread.
 
-            # In production, current_request_thread_id will be set properly
-            # by threading.current_thread().ident.
             # TODO(kamens): this profiler will need work if we ever
             # actually use multiple threads in a single request and want to
             # profile more than one of them.
