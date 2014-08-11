@@ -33,12 +33,10 @@ import pickle
 import config
 import util
 
-dev_server = os.environ.get("SERVER_SOFTWARE", "").startswith("Devel")
-
 
 class CurrentRequestId(object):
     """A per-request identifier accessed by other pieces of mini profiler.
-    
+
     It is managed as part of the middleware lifecycle."""
 
     # In production use threading.local() to make request ids threadsafe
@@ -52,6 +50,7 @@ class CurrentRequestId(object):
     @staticmethod
     def set(request_id):
         CurrentRequestId._local.request_id = request_id
+
 
 class RawSharedStatsHandler(RequestHandler):
     def get(self):
@@ -101,11 +100,36 @@ class SharedStatsHandler(RequestHandler):
         self.response.out.write(template)
 
 
+class CpuProfileStatsHandler(RequestHandler):
+    """Handler for retrieving the (sampling) profile in .cpuprofile format.
+
+    This is compatible with Chrome's flamechart profile viewer.
+    """
+    def get(self):
+        request_id = self.request.get("request_id")
+        request_stats = RequestStats.get(request_id)
+
+        if not request_stats:
+            self.response.out.write(
+                "Profiler stats no longer exist for this request.")
+            return
+
+        if not 'cpuprofile' in request_stats.profiler_results:
+            self.response.out.write(
+                "No .cpuprofile available for this profile")
+            return
+
+        self.response.headers['Content-Disposition'] = (
+                'attachment; filename="g-m-p-%s.cpuprofile"' % str(request_id))
+        self.response.headers['Content-type'] = "application/json"
+        self.response.out.write(request_stats.profiler_results['cpuprofile'])
+
+
 class RequestLogHandler(RequestHandler):
     """Handler for retrieving and returning a RequestLog from GAE's logs API.
 
     See https://developers.google.com/appengine/docs/python/logs.
-    
+
     This GET request accepts a logging_request_id via query param that matches
     the request_id from an App Engine RequestLog.
 
@@ -139,7 +163,7 @@ class RequestLogHandler(RequestHandler):
 
         # Log fetching doesn't work on the dev server and this data isn't
         # relevant in dev server's case, so we return a simple fake response.
-        if dev_server:
+        if util.dev_server:
             dict_request_log = {
                 "pending_ms": 0,
                 "loading_request": False,
@@ -278,7 +302,7 @@ class RequestProfiler(object):
 
     def profiler_results(self):
         """Return the CPU profiler results for this request, if any.
-        
+
         This will return a dictionary containing results for either the
         sampling profiler, instrumented profiler results, or a simple
         start/stop timer if both profilers are disabled."""
@@ -290,6 +314,7 @@ class RequestProfiler(object):
             results.update(self.instrumented_prof.results())
         elif self.sampling_prof:
             results.update(self.sampling_prof.results())
+            results["cpuprofile"] = self.sampling_prof.cpuprofile_results()
         elif self.linebyline_prof:
             results.update(self.linebyline_prof.results())
 
@@ -368,7 +393,11 @@ class RequestProfiler(object):
                 # this file so we don't bring in a lot of imports for users who
                 # don't have the profiler enabled.
                 from . import sampling_profiler
-                self.sampling_prof = sampling_profiler.Profile()
+                if Mode.is_memory_sampling_enabled(self.mode):
+                    self.sampling_prof = sampling_profiler.Profile(
+                        memory_sample_rate=25)
+                else:
+                    self.sampling_prof = sampling_profiler.Profile()
                 result_fxn_wrapper = self.sampling_prof.run
 
             elif config.Mode.is_instrumented_enabled(self.mode):
@@ -412,7 +441,7 @@ class RequestProfiler(object):
 
     def get_logging_request_id(self):
         """Return the identifier for this request used by GAE's logservice.
-        
+
         This logging_request_id will match the request_id parameter of a
         RequestLog object stored in App Engine's logging API:
         https://developers.google.com/appengine/docs/python/logs/
@@ -509,7 +538,7 @@ class ProfilerWSGIMiddleware(object):
             old_memcache_add = memcache.add
             old_memcache_delete = memcache.delete
             memcache.add = (lambda key, *args, **kwargs:
-                                (True if key == recording.lock_key() 
+                                (True if key == recording.lock_key()
                                  else old_memcache_add(key, *args, **kwargs)))
             memcache.delete = (lambda key, *args, **kwargs:
                                    (True if key == recording.lock_key()

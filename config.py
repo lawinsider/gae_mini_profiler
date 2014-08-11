@@ -1,4 +1,5 @@
 import os
+import cookies
 
 from google.appengine.api import lib_config
 
@@ -33,11 +34,38 @@ class Mode(object):
     SIMPLE = "simple"  # Simple start/end timing for the request as a whole
     CPU_INSTRUMENTED = "instrumented"  # Profile all function calls
     CPU_SAMPLING = "sampling"  # Sample call stacks
+    CPU_MEMORY_SAMPLING = "memory_sampling"  # Sample call stacks and memory
     CPU_LINEBYLINE = "linebyline" # Line-by-line profiling on a subset of functions
     RPC_ONLY = "rpc"  # Profile all RPC calls
     RPC_AND_CPU_INSTRUMENTED = "rpc_instrumented" # RPCs and all fxn calls
     RPC_AND_CPU_SAMPLING = "rpc_sampling" # RPCs and sample call stacks
+    RPC_AND_CPU_MEMORY_SAMPLING = "rpc_memory_sampling" # RPCs and sample call
+                                                        # stacks and memory
     RPC_AND_CPU_LINEBYLINE = "rpc_linebyline" # RPCs and line-by-line profiling
+
+    @staticmethod
+    def get_mode(environ):
+        """Get the profiler mode requested by current request's headers &
+        cookies."""
+        if "HTTP_G_M_P_MODE" in environ:
+            mode = environ["HTTP_G_M_P_MODE"]
+        else:
+            mode = cookies.get_cookie_value("g-m-p-mode")
+
+        if (mode not in [
+                Mode.SIMPLE,
+                Mode.CPU_INSTRUMENTED,
+                Mode.CPU_SAMPLING,
+                Mode.CPU_MEMORY_SAMPLING,
+                Mode.CPU_LINEBYLINE,
+                Mode.RPC_ONLY,
+                Mode.RPC_AND_CPU_INSTRUMENTED,
+                Mode.RPC_AND_CPU_SAMPLING,
+                Mode.RPC_AND_CPU_MEMORY_SAMPLING,
+                Mode.RPC_AND_CPU_LINEBYLINE]):
+            mode = Mode.RPC_AND_CPU_INSTRUMENTED
+
+        return mode
 
     @staticmethod
     def is_rpc_enabled(mode):
@@ -45,13 +73,21 @@ class Mode(object):
                 Mode.RPC_ONLY,
                 Mode.RPC_AND_CPU_INSTRUMENTED,
                 Mode.RPC_AND_CPU_SAMPLING,
-                Mode.RPC_AND_CPU_LINEBYLINE]
+                Mode.RPC_AND_CPU_MEMORY_SAMPLING]
 
     @staticmethod
     def is_sampling_enabled(mode):
         return mode in [
                 Mode.CPU_SAMPLING,
-                Mode.RPC_AND_CPU_SAMPLING]
+                Mode.CPU_MEMORY_SAMPLING,
+                Mode.RPC_AND_CPU_SAMPLING,
+                Mode.RPC_AND_CPU_MEMORY_SAMPLING]
+
+    @staticmethod
+    def is_memory_sampling_enabled(mode):
+        return mode in [
+                Mode.CPU_MEMORY_SAMPLING,
+                Mode.RPC_AND_CPU_MEMORY_SAMPLING]
 
     @staticmethod
     def is_instrumented_enabled(mode):
