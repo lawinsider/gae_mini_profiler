@@ -120,7 +120,9 @@ class CpuProfileStatsHandler(RequestHandler):
             return
 
         self.response.headers['Content-Disposition'] = (
-                'attachment; filename="g-m-p-%s.cpuprofile"' % str(request_id))
+            'attachment; filename="gmp-%s-%s.cpuprofile"' %
+            (request_stats.start_dt.strftime('%Y%m%d-%H%M%S'),
+             str(request_id)))
         self.response.headers['Content-type'] = "application/json"
         self.response.out.write(request_stats.profiler_results['cpuprofile'])
 
@@ -208,7 +210,7 @@ class RequestStatsHandler(RequestHandler):
         self.response.out.write(json.dumps(list_request_stats))
 
 class RequestStats(object):
-
+    
     serialized_properties = ["request_id", "method", "url", "url_short", "s_dt",
                              "profiler_results", "appstats_results", "mode",
                              "temporary_redirect", "logs",
@@ -233,7 +235,7 @@ class RequestStats(object):
             self.url_short = self.url_short[:26] + "..."
 
         self.mode = profiler.mode
-        self.s_dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.start_dt = datetime.datetime.now()
 
         self.profiler_results = profiler.profiler_results()
         self.appstats_results = profiler.appstats_results()
