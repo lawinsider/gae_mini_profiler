@@ -235,7 +235,7 @@ class RequestStats(object):
             self.url_short = self.url_short[:26] + "..."
 
         self.mode = profiler.mode
-        self.start_dt = datetime.datetime.now()
+        self.s_dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         self.profiler_results = profiler.profiler_results()
         self.appstats_results = profiler.appstats_results()
@@ -395,7 +395,7 @@ class RequestProfiler(object):
                 # this file so we don't bring in a lot of imports for users who
                 # don't have the profiler enabled.
                 from . import sampling_profiler
-                if Mode.is_memory_sampling_enabled(self.mode):
+                if config.Mode.is_memory_sampling_enabled(self.mode):
                     self.sampling_prof = sampling_profiler.Profile(
                         memory_sample_rate=25)
                 else:
