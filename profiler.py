@@ -205,8 +205,7 @@ class CpuProfileStatsHandler(RequestHandler):
 
         self.response.headers['Content-Disposition'] = (
             'attachment; filename="gmp-%s-%s.cpuprofile"' %
-            (request_stats.start_dt.strftime('%Y%m%d-%H%M%S'),
-             str(request_id)))
+            (request_stats.s_dt, str(request_id)))
         # Setting content-type to application/json caused Safari (7.1,
         # at least) to append a .json extension to the existing
         # .cpuprofile extension so we use an agnostic content-type.
