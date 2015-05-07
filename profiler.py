@@ -33,6 +33,7 @@ import pickle
 import config
 import util
 
+
 class CurrentRequestId(object):
     """A per-request identifier accessed by other pieces of mini profiler.
 
@@ -42,22 +43,13 @@ class CurrentRequestId(object):
     _local = threading.local()
     _local.request_id = None
 
-    # On the devserver don't use threading.local b/c it's reset on Thread.start
-    dev_server_request_id = None
-
     @staticmethod
     def get():
-        if util.dev_server:
-            return CurrentRequestId.dev_server_request_id
-        else:
-            return CurrentRequestId._local.request_id
+        return CurrentRequestId._local.request_id
 
     @staticmethod
     def set(request_id):
-        if util.dev_server:
-            CurrentRequestId.dev_server_request_id = request_id
-        else:
-            CurrentRequestId._local.request_id = request_id
+        CurrentRequestId._local.request_id = request_id
 
 
 class Mode(object):
@@ -142,6 +134,7 @@ class Mode(object):
         return mode in [
                 Mode.CPU_LINEBYLINE,
                 Mode.RPC_AND_CPU_LINEBYLINE]
+
 
 class RawSharedStatsHandler(RequestHandler):
     def get(self):
@@ -306,8 +299,8 @@ class RequestStatsHandler(RequestHandler):
         self.response.out.write(json.dumps(list_request_stats))
 
 class RequestStats(object):
-    
-    serialized_properties = ["request_id", "url",
+
+    serialized_properties = ["request_id", "method", "url", "url_short", "s_dt",
                              "profiler_results", "appstats_results", "mode",
                              "temporary_redirect", "logs",
                              "logging_request_id"]
@@ -320,12 +313,18 @@ class RequestStats(object):
         # https://developers.google.com/appengine/docs/python/logs/
         self.logging_request_id = profiler.logging_request_id
 
+        self.method = environ.get("REQUEST_METHOD")
+
         self.url = environ.get("PATH_INFO")
         if environ.get("QUERY_STRING"):
             self.url += "?%s" % environ.get("QUERY_STRING")
 
+        self.url_short = unicode(self.url, 'utf-8')
+        if len(self.url_short) > 26:
+            self.url_short = self.url_short[:26] + "..."
+
         self.mode = profiler.mode
-        self.start_dt = datetime.datetime.now()
+        self.s_dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         self.profiler_results = profiler.profiler_results()
         self.appstats_results = profiler.appstats_results()
@@ -449,7 +448,7 @@ class RequestProfiler(object):
         # Always track simple start/stop time.
         self.start = time.time()
 
-        if self.mode == Mode.SIMPLE:
+        if self.mode == config.Mode.SIMPLE:
 
             # Detailed recording is disabled.
             result = app(environ, start_response)
@@ -462,7 +461,7 @@ class RequestProfiler(object):
             handler = RequestProfiler.create_handler()
             logging.getLogger().addHandler(handler)
 
-            if Mode.is_rpc_enabled(self.mode):
+            if config.Mode.is_rpc_enabled(self.mode):
                 # Turn on AppStats monitoring for this request
                 # Note that we don't import appstats_profiler at the top of
                 # this file so we don't bring in a lot of imports for users who
@@ -479,25 +478,20 @@ class RequestProfiler(object):
             # TODO(kamens): both sampling_profiler and instrumented_profiler
             # could subclass the same class. Then they'd both be guaranteed to
             # implement run(), and the following if/else could be simplified.
-            if Mode.is_sampling_enabled(self.mode):
+            if config.Mode.is_sampling_enabled(self.mode):
                 # Turn on sampling profiling for this request.
                 # Note that we don't import sampling_profiler at the top of
                 # this file so we don't bring in a lot of imports for users who
                 # don't have the profiler enabled.
                 from . import sampling_profiler
-                if Mode.is_memory_sampling_enabled(self.mode):
+                if config.Mode.is_memory_sampling_enabled(self.mode):
                     self.sampling_prof = sampling_profiler.Profile(
                         memory_sample_rate=25)
                 else:
                     self.sampling_prof = sampling_profiler.Profile()
                 result_fxn_wrapper = self.sampling_prof.run
 
-            elif Mode.is_linebyline_enabled(self.mode):
-                from . import linebyline_profiler
-                self.linebyline_prof = linebyline_profiler.Profile()
-                result_fxn_wrapper = self.linebyline_prof.run
-
-            elif Mode.is_instrumented_enabled(self.mode):
+            elif config.Mode.is_instrumented_enabled(self.mode):
                 # Turn on cProfile instrumented profiling for this request
                 # Note that we don't import instrumented_profiler at the top of
                 # this file so we don't bring in a lot of imports for users who
@@ -505,6 +499,11 @@ class RequestProfiler(object):
                 from . import instrumented_profiler
                 self.instrumented_prof = instrumented_profiler.Profile()
                 result_fxn_wrapper = self.instrumented_prof.run
+
+            elif config.Mode.is_linebyline_enabled(self.mode):
+                from . import linebyline_profiler
+                self.linebyline_prof = linebyline_profiler.Profile()
+                result_fxn_wrapper = self.linebyline_prof.run
 
             # Get wsgi result
             result = result_fxn_wrapper(lambda: app(environ, start_response))
@@ -576,8 +575,9 @@ class RequestProfiler(object):
 
 class ProfilerWSGIMiddleware(object):
 
-    def __init__(self, app):
+    def __init__(self, app, keep_appstats=True):
         self.app = app
+        self.keep_appstats = keep_appstats
 
     def __call__(self, environ, start_response):
 
@@ -586,13 +586,17 @@ class ProfilerWSGIMiddleware(object):
         # Never profile calls to the profiler itself to avoid endless recursion.
         if (not config.should_profile() or
             environ.get("PATH_INFO", "").startswith("/gae_mini_profiler/")):
-            result = self.app(environ, start_response)
+            app = self.app
+            if self.keep_appstats:
+                app = recording.appstats_wsgi_middleware(app)
+            result = app(environ, start_response)
             for value in result:
                 yield value
         else:
             # Set a random ID for this request so we can look up stats later
             import base64
             CurrentRequestId.set(base64.urlsafe_b64encode(os.urandom(5)))
+            profile_mode = config.get_mode(environ, cookies)
 
             # Send request id in headers so jQuery ajax calls can pick
             # up profiles.
@@ -607,7 +611,9 @@ class ProfilerWSGIMiddleware(object):
 
                 # Append headers used when displaying profiler results from ajax requests
                 headers.append(("X-MiniProfiler-Id", CurrentRequestId.get()))
-                headers.append(("X-MiniProfiler-QS", environ.get("QUERY_STRING")))
+                headers.append(("X-MiniProfiler-QS", str(environ.get("QUERY_STRING"))))
+                headers.append(("Set-Cookie",
+                    cookies.set_cookie_value("g-m-p-mode", profile_mode, path="/")))
 
                 return start_response(status, headers, exc_info)
 
@@ -630,8 +636,7 @@ class ProfilerWSGIMiddleware(object):
                                     else old_memcache_delete(key, *args, **kwargs)))
 
             try:
-                profiler = RequestProfiler(CurrentRequestId.get(),
-                                           Mode.get_mode(environ))
+                profiler = RequestProfiler(CurrentRequestId.get(), profile_mode)
                 result = profiler.profile_start_response(self.app, environ, profiled_start_response)
                 for value in result:
                     yield value
