@@ -39,7 +39,7 @@ var GaeMiniProfiler = {
             if (xhr) {fetchFromHeaders(xhr.getResponseHeader);}
         });
 
-        if (angular) {
+        if (typeof angular !== 'undefined') {
             angular.module('ng').config(function($httpProvider) {
                 $httpProvider.defaults.transformResponse.push(function(data, headers) {
                     fetchFromHeaders(headers);
