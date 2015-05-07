@@ -26,15 +26,27 @@ var GaeMiniProfiler = {
 
         // Fetch profile results for any ajax calls
         // (see http://code.google.com/p/mvc-mini-profiler/source/browse/MvcMiniProfiler/UI/Includes.js)
-        $(document).ajaxComplete(function (e, xhr, settings) {
-            if (xhr) {
-                var requestId = xhr.getResponseHeader('X-MiniProfiler-Id');
-                if (requestId) {
-                    var queryString = xhr.getResponseHeader('X-MiniProfiler-QS');
-                    GaeMiniProfiler.fetch(requestId, queryString);
-                }
+
+        function fetchFromHeaders(headers) {
+            var requestId = headers('X-MiniProfiler-Id');
+            if (requestId) {
+                var queryString = headers('X-MiniProfiler-QS');
+                GaeMiniProfiler.fetch(requestId, queryString);
             }
+        }
+
+        $(document).ajaxComplete(function (e, xhr, settings) {
+            if (xhr) {fetchFromHeaders(xhr.getResponseHeader);}
         });
+
+        if (angular) {
+            angular.module('ng').config(function($httpProvider) {
+                $httpProvider.defaults.transformResponse.push(function(data, headers) {
+                    fetchFromHeaders(headers);
+                    return data;
+                });
+            });
+        }
 
         GaeMiniProfiler.fetch(requestId, window.location.search, fShowImmediately);
     },
@@ -184,7 +196,6 @@ var GaeMiniProfiler = {
                         .children(".g-m-p-corner .entry")
                         .hide();
                 }
-
                 $(document.body)
                     .append(jCorner)
                     .click(function(e) { return GaeMiniProfiler.collapse(e); });
